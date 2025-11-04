@@ -2,9 +2,9 @@ from ortools.sat.python import cp_model
 from collections import defaultdict
 
 def optimize(data):
-    model,start_times,end_times,invterval_vars = create_model(data)
+    model,output_data = create_model(data)
     print("Model created")
-    status = solve_model(model,start_times,end_times,invterval_vars)
+    status = solve_model(model,output_data)
     print(f"Model solved with status {status}")
 
 
@@ -28,6 +28,10 @@ def create_model(data) -> cp_model.CpModel:
     end_times = {}
     #variables corresponding to Delta[start_time]
     durations = {}
+
+    output_data = {}
+    output_data["start_times"] = start_times
+    output_data["end_times"] = end_times
 
     
     for (name,intervention) in interventions.items():
@@ -57,8 +61,9 @@ def create_model(data) -> cp_model.CpModel:
 
     #Workload contraints and risk calculations
 
+    total_resources = defaultdict(list)
+    output_data["total_ressources"] = total_resources
     for t in range(1,T+1):
-        total_resources = defaultdict(list)
         time_string = str(t)
         for c_name,resource in resources.items():
             r_c_t = []
@@ -78,6 +83,8 @@ def create_model(data) -> cp_model.CpModel:
             model.Add(workload_sum >= resource["min"][t-1])
             model.Add(workload_sum <= resource["max"][t-1])
 
+            total_resources[c_name].append(workload_sum)
+
     interval_vars = []
 
     #Exclusion constraints
@@ -95,8 +102,6 @@ def create_model(data) -> cp_model.CpModel:
 
         exclusion_season = exclusion[2]
         non_overlap_times = seasons[exclusion_season]
-
-        print(f" Non overlap times for {intervention_a} and {intervention_b} : {non_overlap_times}")
         
         forbidden_end = non_overlap_times[0]
 
@@ -153,17 +158,15 @@ def create_model(data) -> cp_model.CpModel:
     # obj = alpha*obj1 + (1-alpha)*obj2
     # model.Minimize(obj)
 
-    return model,start_times,end_times,interval_vars
+    return model,output_data
 
-def solve_model(model:cp_model.CpModel,start_times,end_times,interval_vars) -> str:
+def solve_model(model:cp_model.CpModel,output_data) -> str:
 
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
     if status in [cp_model.FEASIBLE,cp_model.OPTIMAL]:
-        for i in range(len(start_times)):
-            print(f"I{i+1} : {solver.Value(start_times[i])} -> {solver.Value(end_times[i])}")
+        for i in range(len(output_data["start_times"])):
+            print(f"I{i+1} : {solver.Value(output_data["start_times"][i])} -> {solver.Value(output_data["end_times"][i])}")
         
 
     return solver.StatusName()
-
-    #Ne pas oublier dans l'output de faire +1 aux temps de départ
